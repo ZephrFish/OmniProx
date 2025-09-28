@@ -1,0 +1,9 @@
+include README.md
+include LICENSE
+include requirements.txt
+recursive-include omniprox *.py
+recursive-include docs *.md
+recursive-exclude venv *
+global-exclude __pycache__
+global-exclude *.py[co]
+global-exclude .DS_Store

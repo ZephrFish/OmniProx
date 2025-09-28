@@ -1,0 +1,15 @@
+#!/usr/bin/env python3
+"""
+OmniProx Quick CLI - Simplified command interface
+"""
+
+import sys
+import os
+
+# Add the current directory to path to import omniprox
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
+from omniprox.cli import quick_cli
+
+if __name__ == '__main__':
+    sys.exit(quick_cli())
