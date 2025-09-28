@@ -1,0 +1,79 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "omniprox"
+version = "2.0.0"
+description = "Multi-cloud HTTP proxy manager supporting GCP, Azure, and Cloudflare"
+readme = "README.md"
+requires-python = ">=3.8"
+license = { text = "MIT" }
+authors = [
+    { name = "OmniProx Contributors" }
+]
+keywords = [
+    "proxy",
+    "api-gateway",
+    "cloudflare",
+    "azure",
+    "gcp",
+    "http",
+    "reverse-proxy"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Intended Audience :: System Administrators",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Internet :: Proxy Servers",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: System :: Systems Administration",
+]
+
+dependencies = [
+    "requests>=2.25.0",
+    "colorama>=0.4.0",
+]
+
+[project.optional-dependencies]
+cloudflare = []  # Cloudflare only needs base dependencies (requests)
+gcp = [
+    "google-cloud-api-gateway>=1.0.0",
+    "google-cloud-resource-manager>=1.0.0",
+]
+azure = [
+    "azure-mgmt-apimanagement>=3.0.0",
+    "azure-mgmt-resource>=23.0.0",
+    "azure-identity>=1.14.0",
+]
+all = [
+    "google-cloud-api-gateway>=1.0.0",
+    "google-cloud-resource-manager>=1.0.0",
+    "azure-mgmt-apimanagement>=3.0.0",
+    "azure-mgmt-resource>=23.0.0",
+    "azure-identity>=1.14.0",
+]
+
+[project.scripts]
+omniprox = "omniprox.cli:main"
+omni = "omniprox.cli:quick_cli"
+
+[project.urls]
+Homepage = "https://github.com/zephrfish/omniprox"
+Issues = "https://github.com/zephrfish/omniprox/issues"
+
+[tool.setuptools]
+packages = ["omniprox", "omniprox.core", "omniprox.providers"]
+
+[tool.setuptools.package-data]
+omniprox = ["py.typed"]
