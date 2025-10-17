@@ -815,9 +815,12 @@ function generateIP() {
 
             print(f"\nDeleting {len(endpoints)} workers...")
 
+            # Prefixes used by _generate_worker_name()
+            omniprox_prefixes = ('proxy-', 'worker-', 'api-', 'service-', 'app-', 'edge-', 'omniprox-')
+
             for endpoint in endpoints:
                 name = endpoint.get('name', '')
-                if name.startswith('omniprox-'):
+                if name.startswith(omniprox_prefixes):
                     url = f"{self.base_url}/accounts/{self.account_id}/workers/scripts/{name}"
                     try:
                         response = requests.delete(url, headers=self.headers, timeout=30)
@@ -921,9 +924,12 @@ function generateIP() {
             data = response.json()
             remote_workers = []
 
+            # Prefixes used by _generate_worker_name()
+            omniprox_prefixes = ('proxy-', 'worker-', 'api-', 'service-', 'app-', 'edge-', 'omniprox-')
+
             for script in data.get("result", []):
                 name = script.get("id", "")
-                if name.startswith("omniprox-"):
+                if name.startswith(omniprox_prefixes):
                     remote_workers.append({
                         "name": name,
                         "url": f"https://{name}.{subdomain}.workers.dev",
