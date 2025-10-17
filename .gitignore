@@ -50,7 +50,6 @@ nosetests.xml
 coverage.xml
 *.cover
 .hypothesis/
-.pytest_cache/
 
 # Translations
 *.mo
@@ -112,12 +111,42 @@ venv.bak/
 /Include/
 
 # OmniProx specific
-*.log
 cloudflare_endpoints.json
 azure_endpoints.json
 gcp_endpoints.json
 alibaba_endpoints.json
 
+# Configuration and credentials
+profiles.ini
+config.ini
+*.secret
+*.key
+*.pem
+api_tokens.txt
+credentials.txt
+
+# Test files
+test_*.py
+*_test.py
+test_*.sh
+*_test.sh
+tests/temp/
+tests/output/
+testing/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+*_backup
+
 # Demo and example files
 examples_for_screenshots.sh
 demo_commands.py
+
+# Claude Code traces
+.claude/
+*_SUMMARY.md
+*_FIXES.md
+cleanup_recommendations.md
