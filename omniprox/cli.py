@@ -3,9 +3,8 @@ OmniProx CLI - Command-line interface for multi-cloud HTTP proxy manager
 """
 
 import argparse
-import sys
-import logging
 import os
+import sys
 from typing import Optional
 
 from omniprox.core.utils import setup_logging, check_provider_availability, print_provider_status
