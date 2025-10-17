@@ -439,11 +439,12 @@ OmniProx Azure Container Pool Rotation Client
 Automatically rotates through container pool for each request
 """
 
-import random
-import requests
-import sys
 import json
-from typing import List, Dict
+import random
+import sys
+from typing import Dict, List
+
+import requests
 
 # Container pool configuration
 CONTAINER_POOL = {pool_json}

@@ -1,23 +1,19 @@
 # Core dependencies
-requests>=2.31.0
+requests>=2.25.0
+colorama>=0.4.0
 tldextract>=3.4.0
 
-# Azure provider
+# Azure provider (optional)
 azure-identity>=1.14.0
-azure-mgmt-web>=7.0.0
+azure-mgmt-apimanagement>=3.0.0
 azure-mgmt-resource>=23.0.0
-azure-mgmt-storage>=21.0.0
-azure-mgmt-containerinstance>=10.1.0
-azure-mgmt-frontdoor>=1.1.0  # For Azure Front Door
 
-# GCP provider
-google-cloud-api-gateway>=1.12.0
-google-cloud-resource-manager>=1.14.0
-google-cloud-compute>=1.14.0  # For GCP Load Balancer
+# GCP provider (optional)
+google-cloud-api-gateway>=1.0.0
+google-cloud-resource-manager>=1.0.0
 
-# Alibaba Cloud provider
+# Cloudflare provider - only needs core dependencies (requests)
+
+# Alibaba Cloud provider (optional)
 alibabacloud-cloudapi20160714>=4.8.0
 alibabacloud-tea-openapi>=0.4.0
-
-# Optional utilities
-tabulate>=0.9.0

@@ -21,3 +21,9 @@ try:
     __all__.append('CloudflareProvider')
 except ImportError:
     pass
+
+try:
+    from .alibaba import AlibabaProvider
+    __all__.append('AlibabaProvider')
+except ImportError:
+    pass
