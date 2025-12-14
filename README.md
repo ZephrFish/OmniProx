@@ -2,6 +2,9 @@
 
 OmniProx is a multi-cloud HTTP proxy manager that provides IP rotation and header manipulation capabilities across different cloud providers. It offers a unified interface for managing proxies on various cloud platforms.
 
+> [!IMPORTANT]
+> This has been tested from a Linux/MacOS base build therefore most deployment with python may differ on Windows.  
+
 ## Features
 
 - **Multi-Cloud Support**: Deploy proxies on Azure, GCP, Cloudflare, and Alibaba Cloud
