@@ -3,9 +3,12 @@ Cloudflare Provider for OmniProx
 Implements Cloudflare Workers proxy functionality
 """
 
+import getpass
+import hashlib
 import json
 import logging
 import configparser
+import os
 import sys
 import time
 import random
@@ -15,13 +18,13 @@ from pathlib import Path
 
 try:
     import requests
+    HAS_REQUESTS = True
 except ImportError:
-    print("Error: requests library required for Cloudflare provider")
-    print("Install with: pip install requests")
-    sys.exit(1)
+    HAS_REQUESTS = False
+    requests = None
 
 from ..core.base import BaseOmniProx
-from ..core.utils import normalize_url
+from ..core.utils import confirm_action, normalize_url
 
 
 class CloudflareProvider(BaseOmniProx):
@@ -42,7 +45,6 @@ class CloudflareProvider(BaseOmniProx):
         self._worker_subdomain = None
 
         # Check for environment variable to hide subdomain
-        import os
         self.hide_subdomain = os.getenv("OMNIPROX_HIDE_SUBDOMAIN", "").lower() in ["true", "1", "yes"]
 
         # Now call parent __init__ which will call load_profile
@@ -50,8 +52,6 @@ class CloudflareProvider(BaseOmniProx):
 
     def create_profile(self, config: configparser.ConfigParser, profile_name: str):
         """Create a new Cloudflare profile"""
-        import getpass
-
         print("\nCloudflare Configuration")
         print("="*60)
         print("Steps to get your Cloudflare credentials:")
@@ -128,8 +128,7 @@ class CloudflareProvider(BaseOmniProx):
         url = f"{self.base_url}/accounts/{self.account_id}/workers/subdomain"
 
         # Generate a generic subdomain name for OPSEC (no obvious tool/service indicators)
-        import hashlib
-        subdomain_name = f"api-{hashlib.md5(self.account_id.encode()).hexdigest()[:8]}"
+        subdomain_name = f"api-{hashlib.sha256(self.account_id.encode()).hexdigest()[:8]}"
 
         try:
             # First check if we can get the existing subdomain
@@ -193,7 +192,7 @@ class CloudflareProvider(BaseOmniProx):
 
     def _get_worker_script(self) -> str:
         """Return the optimized Cloudflare Worker script with better performance and security"""
-        return '''// OmniProx Cloudflare Worker - Optimized
+        return r'''// OmniProx Cloudflare Worker - Optimized
 const ALLOWED_HEADERS = new Set([
   'accept', 'accept-language', 'accept-encoding', 'authorization',
   'cache-control', 'content-type', 'origin', 'referer', 'user-agent',
@@ -460,6 +459,12 @@ function generateIP() {
 
     def init_provider(self) -> bool:
         """Initialize Cloudflare provider"""
+        if not HAS_REQUESTS:
+            self.logger.error("requests library not installed")
+            print("Error: requests library required for Cloudflare provider")
+            print("Install with: pip install requests")
+            return False
+
         if not self.api_token or not self.account_id:
             self.logger.error("Cloudflare API token and account ID required")
             print("Error: Cloudflare credentials not configured")
@@ -609,8 +614,8 @@ function generateIP() {
                     subdomain_url = f"{self.base_url}/accounts/{self.account_id}/workers/scripts/{worker_name}/subdomain"
                     try:
                         requests.post(subdomain_url, headers=self.headers, json={"enabled": True}, timeout=30)
-                    except requests.RequestException:
-                        pass  # Subdomain enabling is not critical
+                    except requests.RequestException as e:
+                        self.logger.debug(f"Subdomain enabling not critical, continuing: {e}")
 
                     worker_url = f"https://{worker_name}.{subdomain}.workers.dev"
 
@@ -712,8 +717,11 @@ function generateIP() {
                     # Format for ipinfo.io test
                     return f"{worker_url}?url=https://ipinfo.io/ip"
             return None
-        except Exception as e:
-            self.logger.error(f"Error getting last created proxy URL: {e}")
+        except (KeyError, IndexError, TypeError) as e:
+            self.logger.debug(f"Could not get last created proxy URL: {e}")
+            return None
+        except requests.RequestException as e:
+            self.logger.warning(f"Network error getting last created proxy URL: {e}")
             return None
 
     def list(self) -> bool:
@@ -792,14 +800,7 @@ function generateIP() {
 
         self.logger.info("Cleaning up all Cloudflare Workers")
 
-        # Check if running in non-interactive mode
-        import sys
-        if not sys.stdin.isatty():
-            confirm = "yes"  # Auto-confirm in non-interactive mode
-        else:
-            confirm = input("Delete ALL OmniProx Cloudflare Workers? (yes/no): ")
-
-        if confirm.lower() != 'yes':
+        if not confirm_action("Delete ALL OmniProx Cloudflare Workers?"):
             print("Cleanup cancelled")
             return False
 
@@ -831,7 +832,7 @@ function generateIP() {
                             print(f"  [FAILED] Failed to delete: {name}")
                             failed += 1
                     except requests.RequestException:
-                        print(f"  [ERROR] Error deleting: {name}")
+                        print(f"  Error: Could not delete {name}")
                         failed += 1
 
             # Clear local cache
@@ -983,6 +984,8 @@ function generateIP() {
             try:
                 with open(self.endpoints_file, 'r') as f:
                     return json.load(f)
-            except (json.JSONDecodeError, IOError):
-                pass
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"Corrupted endpoints file, will sync from remote: {e}")
+            except IOError as e:
+                self.logger.warning(f"Could not read endpoints file: {e}")
         return []

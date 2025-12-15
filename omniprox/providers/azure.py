@@ -3,22 +3,27 @@ Azure Provider for OmniProx
 Creates multiple Azure Container Instances for IP rotation
 """
 
-import os
 import json
 import logging
-import time
+import os
 import random
 import subprocess
+import sys
 import tempfile
-from pathlib import Path
+import textwrap
+import time
 from datetime import datetime
+from pathlib import Path
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
 from omniprox.core.base import BaseOmniProx
 
-# Cross-platform temp directory for rotation client script
-ROTATE_CLIENT_PATH = Path(tempfile.gettempdir()) / 'omniprox_rotate.py'
-from omniprox.core.utils import get_unique_suffix
+from omniprox.core.utils import confirm_action, get_unique_suffix
+
+
+def _get_rotate_client_path() -> Path:
+    """Get the path for the rotation client script (computed fresh each time)"""
+    return Path(tempfile.gettempdir()) / 'omniprox_rotate.py'
 
 # Azure SDK imports
 try:
@@ -143,7 +148,7 @@ class AzureProvider(BaseOmniProx):
                     print("Error: No active Azure CLI session")
                     print("Run: az login")
                     return False
-            except Exception as e:
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, json.JSONDecodeError, FileNotFoundError, OSError) as e:
                 self.logger.error(f"Error checking Azure CLI: {e}")
                 return False
         else:
@@ -434,17 +439,18 @@ server.listen(80, () => {{
                 # Create rotation client script
                 self.create_rotation_client()
 
+                rotate_path = _get_rotate_client_path()
                 print(f"\nUsage Examples:")
                 print(f"  # Random proxy from pool:")
                 print(f"  curl '{random.choice(self.container_pool)['url']}'")
                 print(f"\n  # Python rotation client:")
-                print(f"  python3 {ROTATE_CLIENT_PATH}")
+                print(f"  python3 {rotate_path}")
                 print(f"\n  # Test IP rotation:")
-                print(f"  python3 {ROTATE_CLIENT_PATH} test")
+                print(f"  python3 {rotate_path} test")
 
                 return True
             else:
-                print("\n[ERROR] No containers were successfully created")
+                print("\nError: No containers were successfully created")
                 return False
 
         except Exception as e:
@@ -452,10 +458,9 @@ server.listen(80, () => {{
             print(f"Error: {e}")
             return False
 
-    def create_rotation_client(self):
+    def create_rotation_client(self) -> None:
         """Create a Python client for rotating through the container pool"""
-
-        client_script = '''#!/usr/bin/env python3
+        client_script = textwrap.dedent('''#!/usr/bin/env python3
 """
 OmniProx Azure Container Pool Rotation Client
 Automatically rotates through container pool for each request
@@ -507,7 +512,7 @@ class RotatingProxy:
             print(f"[OK] Request via: {{proxy_url}} (IP: {{proxy_ip}})")
             return response
         except Exception as e:
-            print(f"[ERROR] Error with {{proxy_url}}: {{e}}")
+            print(f"Error: Request to {{proxy_url}} failed: {{e}}")
             return None
 
     def test_rotation(self, num_requests=5):
@@ -545,7 +550,7 @@ def main():
     proxy = RotatingProxy(CONTAINER_POOL)
 
     if not CONTAINER_POOL:
-        print("[ERROR] Error: No container pool configured")
+        print("Error: No container pool configured")
         print("Run: python3 omniprox.py --provider azure-pool --command create --url <target>")
         return 1
 
@@ -573,13 +578,14 @@ def main():
 
 if __name__ == "__main__":
     main()
-'''.format(pool_json=json.dumps(self.container_pool, indent=2))
+        ''').strip().format(pool_json=json.dumps(self.container_pool, indent=2))
 
         # Save the client script
-        ROTATE_CLIENT_PATH.write_text(client_script)
-        ROTATE_CLIENT_PATH.chmod(0o755)
+        rotate_path = _get_rotate_client_path()
+        rotate_path.write_text(client_script)
+        rotate_path.chmod(0o755)
 
-        print(f"\n[OK] Rotation client created: {ROTATE_CLIENT_PATH}")
+        print(f"\n[OK] Rotation client created: {rotate_path}")
 
     def list(self):
         """List all containers in the pool"""
@@ -701,7 +707,7 @@ if __name__ == "__main__":
                     deleted += 1
                     print(f"  [OK] Deleted {container['name']}")
                 except Exception as e:
-                    print(f"  [ERROR] Failed to delete {container['name']}: {e}")
+                    print(f"  Error: Failed to delete {container['name']}: {e}")
 
             # Clear pool configuration
             self.container_pool = []
@@ -747,14 +753,7 @@ if __name__ == "__main__":
             for pool_id, containers in pools.items():
                 print(f"  Pool {pool_id}: {len(containers)} containers")
 
-            # Check if running in non-interactive mode
-            import sys
-            if not sys.stdin.isatty():
-                confirm = "yes"  # Auto-confirm in non-interactive mode
-            else:
-                confirm = input("\nDelete all OmniProx containers? (yes/no): ").strip().lower()
-
-            if confirm != 'yes':
+            if not confirm_action("\nDelete all OmniProx containers?"):
                 print("Cleanup cancelled")
                 return False
 
@@ -834,8 +833,9 @@ if __name__ == "__main__":
                 print("[TEST] TESTING IP ROTATION")
                 print("="*60)
 
+                rotate_path = _get_rotate_client_path()
                 result = subprocess.run(
-                    ['python3', str(ROTATE_CLIENT_PATH), 'test', '10'],
+                    ['python3', str(rotate_path), 'test', '10'],
                     capture_output=True,
                     text=True,
                     timeout=120
@@ -843,16 +843,21 @@ if __name__ == "__main__":
                 print(result.stdout)
 
                 # Offer to clean up
-                cleanup = input("\n[CLEAN] Delete test containers? (yes/no): ").strip().lower()
-                if cleanup == 'yes':
-                    self.cleanup()
+                try:
+                    cleanup = input("\n[CLEAN] Delete test containers? (yes/no): ").strip().lower()
+                    if cleanup == 'yes':
+                        self.cleanup()
+                except (EOFError, KeyboardInterrupt):
+                    print("\nSkipping cleanup (non-interactive mode)")
+                    print(f"Run 'omniprox --provider azure --command cleanup' to clean up manually")
 
             self.url = original_url
         else:
             # Test existing pool
             print("Testing existing container pool...")
+            rotate_path = _get_rotate_client_path()
             result = subprocess.run(
-                ['python3', str(ROTATE_CLIENT_PATH), 'test'],
+                ['python3', str(rotate_path), 'test'],
                 capture_output=True,
                 text=True,
                 timeout=60
