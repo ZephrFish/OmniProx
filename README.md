@@ -3,7 +3,7 @@
 OmniProx is a multi-cloud HTTP proxy manager that provides IP rotation and header manipulation capabilities across different cloud providers. It offers a unified interface for managing proxies on various cloud platforms.
 
 > [!IMPORTANT]
-> This has been tested from a Linux/MacOS base build. **Windows users should use WSL (Windows Subsystem for Linux)** with Ubuntu 22.04 or later for best compatibility. Native Windows installations may encounter encoding issues, particularly with the Azure provider and python lib support.
+> This has been tested from a Linux/MacOS base build. **Windows users should use WSL (Windows Subsystem for Linux)** with Ubuntu 22.04 or later for best compatibility. Native Windows installations may encounter encoding issues, particularly with the Azure provider and python lib support. If you have issues on Windows, try WSL or a Linux VM first before opening an issue.
 
 ## Features
 
