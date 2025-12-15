@@ -51,8 +51,8 @@ class AlibabaProvider(BaseOmniProx):
                 self.region_id = self.args.region
             else:
                 self.region_id = profile.get('region_id', 'cn-hangzhou')
-            self.logger.info(f"Loaded profile '{profile_name}'")
-            self.logger.debug(f"Credentials loaded - Access Key ID: {self.access_key_id}, Region: {self.region_id}")
+            self.logger.info(f"Loaded Alibaba profile '{profile_name}'")
+            self.logger.debug(f"Alibaba credentials loaded for region: {self.region_id}")
 
     def init_provider(self) -> bool:
         """Initialize Alibaba Cloud SDK"""
@@ -60,7 +60,7 @@ class AlibabaProvider(BaseOmniProx):
             from alibabacloud_cloudapi20160714.client import Client
             from alibabacloud_tea_openapi import models as open_api_models
 
-            self.logger.debug(f"Initializing with Access Key ID: {self.access_key_id}")
+            self.logger.debug("Initializing Alibaba Cloud API client")
             config = open_api_models.Config(
                 access_key_id=self.access_key_id,
                 access_key_secret=self.access_key_secret,
@@ -221,7 +221,7 @@ class AlibabaProvider(BaseOmniProx):
 
     def list(self) -> bool:
         """List all Alibaba API Gateways"""
-        self.logger.debug(f"list() - Access Key ID before init: {self.access_key_id}")
+        self.logger.debug("Listing Alibaba API Gateways")
         if not self.init_provider():
             return False
 
@@ -274,8 +274,8 @@ class AlibabaProvider(BaseOmniProx):
                                     print(f"    Stage: {api.stage_name if hasattr(api, 'stage_name') else 'N/A'}")
                                     print(f"    Visibility: {api.visibility}")
 
-                        except:
-                            pass
+                        except Exception as e:
+                            self.logger.debug(f"Could not list APIs in group: {e}")
 
             if count == 0:
                 print("\nNo OmniProx API Gateways found")
@@ -314,8 +314,9 @@ class AlibabaProvider(BaseOmniProx):
                         abolish_request,
                         runtime
                     )
-            except:
-                pass  # API might not be deployed to all stages
+            except Exception as e:
+                # API might not be deployed to all stages
+                self.logger.debug(f"Could not undeploy from all stages: {e}")
 
             # 2. Delete API
             delete_api_request = cloudapi_models.DeleteApiRequest(
@@ -334,7 +335,7 @@ class AlibabaProvider(BaseOmniProx):
             self.logger.error(f"Failed to delete API: {e}")
             return False
 
-    def delete(self, api_id: str, group_id: Optional[str] = None) -> bool:
+    def delete(self, api_id: str = None, group_id: Optional[str] = None) -> bool:
         """Delete a specific API Gateway"""
         if not self.init_provider():
             return False
@@ -371,8 +372,9 @@ class AlibabaProvider(BaseOmniProx):
                         abolish_request,
                         runtime
                     )
-            except:
-                pass
+            except Exception as e:
+                # API might not be deployed to all stages
+                self.logger.debug(f"Could not undeploy from all stages: {e}")
 
             # 2. Delete API
             delete_api_request = cloudapi_models.DeleteApiRequest(
@@ -397,7 +399,8 @@ class AlibabaProvider(BaseOmniProx):
                     runtime
                 )
                 print(f"  [OK] Deleted API Group: {group_id}")
-            except:
+            except Exception as e:
+                self.logger.debug(f"Could not delete group {group_id}: {e}")
                 print(f"  [INFO] API Group {group_id} still has other APIs")
 
             return True

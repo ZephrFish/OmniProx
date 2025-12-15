@@ -133,7 +133,7 @@ class GCPProvider(BaseOmniProx):
                 try:
                     result = subprocess.run(
                         ['gcloud', 'auth', 'list', '--filter=status:ACTIVE', '--format=value(account)'],
-                        capture_output=True, text=True, check=False
+                        capture_output=True, text=True, check=False, timeout=30
                     )
                     if result.returncode == 0 and result.stdout.strip():
                         self.logger.info(f"Found active gcloud account: {result.stdout.strip()}")
@@ -204,7 +204,7 @@ class GCPProvider(BaseOmniProx):
                 try:
                     result = subprocess.run(
                         ['gcloud', 'projects', 'describe', self.project_id],
-                        capture_output=True, text=True, check=False
+                        capture_output=True, text=True, check=False, timeout=30
                     )
                     if result.returncode != 0:
                         self.logger.warning(f"Project {self.project_id} not found or not accessible")
@@ -225,7 +225,7 @@ class GCPProvider(BaseOmniProx):
         try:
             result = subprocess.run(
                 ['gcloud', 'projects', 'describe', project_id, '--format=value(lifecycleState)'],
-                capture_output=True, text=True, check=False
+                capture_output=True, text=True, check=False, timeout=30
             )
             return result.returncode == 0 and result.stdout.strip() == 'ACTIVE'
         except Exception:
@@ -239,7 +239,7 @@ class GCPProvider(BaseOmniProx):
                 'gcloud', 'projects', 'list',
                 '--filter=labels.managed-by:omniprox AND lifecycleState:ACTIVE',
                 '--format=value(projectId)'
-            ], capture_output=True, text=True, check=False)
+            ], capture_output=True, text=True, check=False, timeout=60)
 
             if result.returncode == 0 and result.stdout.strip():
                 existing_project = result.stdout.strip().split('\n')[0]
@@ -265,7 +265,7 @@ class GCPProvider(BaseOmniProx):
                 'gcloud', 'projects', 'create', project_id,
                 '--name=OmniProx API Gateway',
                 '--labels=managed-by=omniprox,purpose=api-gateway-proxy'
-            ], capture_output=True, text=True, check=False)
+            ], capture_output=True, text=True, check=False, timeout=120)
 
             if result.returncode != 0:
                 self.logger.error(f"Failed to create project: {result.stderr}")
@@ -273,7 +273,7 @@ class GCPProvider(BaseOmniProx):
                 return None
 
             # Set as active project
-            subprocess.run(['gcloud', 'config', 'set', 'project', project_id], check=False)
+            subprocess.run(['gcloud', 'config', 'set', 'project', project_id], check=False, timeout=30)
 
             # Enable required APIs
             print("Enabling required APIs...")
@@ -286,7 +286,7 @@ class GCPProvider(BaseOmniProx):
             for api in apis_to_enable:
                 subprocess.run([
                     'gcloud', 'services', 'enable', api, '--project', project_id
-                ], check=False)
+                ], check=False, timeout=120)
 
             self.logger.info(f"Created new GCP project: {project_id}")
             print(f"Successfully created project: {project_id}")
@@ -604,7 +604,6 @@ class GCPProvider(BaseOmniProx):
 
         try:
             # Generate unique API ID for testing
-            import time
             import random
             test_suffix = f"test-{int(time.time())}-{random.randint(1000, 9999)}"
             api_id = f"omniprox-{test_suffix}"
@@ -710,7 +709,7 @@ class GCPProvider(BaseOmniProx):
                     'gcloud', 'api-gateway', 'apis', 'list',
                     '--project', self.project_id,
                     '--format', 'json'
-                ], capture_output=True, text=True, check=True)
+                ], capture_output=True, text=True, check=True, timeout=60)
 
                 cli_apis = json.loads(result.stdout) if result.stdout else []
                 omniprox_apis = [api for api in cli_apis if 'omniprox' in api.get('name', '').lower()]
@@ -856,8 +855,6 @@ class GCPProvider(BaseOmniProx):
     def _delete_api_with_gcloud(self, api_id: str) -> bool:
         """Delete API and related resources using gcloud CLI for reliability"""
         try:
-            import subprocess
-
             # First, try to delete any gateways
             try:
                 # Find all gateways that might be using this API
@@ -937,8 +934,8 @@ class GCPProvider(BaseOmniProx):
                     '--async'  # Don't wait for completion
                 ], check=False, capture_output=True)  # Don't raise on failure
                 return True
-            except:
-                pass
+            except (subprocess.CalledProcessError, subprocess.TimeoutExpired, OSError) as e:
+                self.logger.debug(f"Retry deletion failed for {api_id}: {e}")
 
             return False
         except Exception as e:
@@ -965,7 +962,7 @@ class GCPProvider(BaseOmniProx):
                     'gcloud', 'api-gateway', 'apis', 'list',
                     '--project', self.project_id,
                     '--format', 'json'
-                ], capture_output=True, text=True, check=True)
+                ], capture_output=True, text=True, check=True, timeout=60)
 
                 cli_apis = json.loads(result.stdout) if result.stdout else []
                 omniprox_apis = [api for api in cli_apis if 'omniprox' in api.get('name', '').lower()]

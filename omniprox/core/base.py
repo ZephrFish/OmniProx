@@ -223,7 +223,7 @@ class BaseOmniProx(ABC):
                     self.cleanup()
             except (EOFError, KeyboardInterrupt):
                 print("\nSkipping cleanup (non-interactive mode)")
-                print("Run 'omniprox --provider {} --command cleanup' to clean up manually".format(self.provider))
+                print(f"Run 'omniprox --provider {self.provider} --command cleanup' to clean up manually")
 
             # Restore original URL
             self.url = original_url
