@@ -7,14 +7,17 @@ import os
 import json
 import logging
 import time
-import hashlib
 import random
 import subprocess
+import tempfile
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
 from omniprox.core.base import BaseOmniProx
+
+# Cross-platform temp directory for rotation client script
+ROTATE_CLIENT_PATH = Path(tempfile.gettempdir()) / 'omniprox_rotate.py'
 from omniprox.core.utils import get_unique_suffix
 
 # Azure SDK imports
@@ -89,7 +92,7 @@ class AzureProvider(BaseOmniProx):
         pool_json = config.get(profile_name, 'container_pool', fallback='[]')
         try:
             self.container_pool = json.loads(pool_json)
-        except:
+        except (json.JSONDecodeError, ValueError, TypeError):
             self.container_pool = []
 
     def save_pool_config(self):
@@ -125,7 +128,12 @@ class AzureProvider(BaseOmniProx):
 
             # Verify CLI authentication
             try:
-                result = subprocess.run(['az', 'account', 'show'], capture_output=True, text=True)
+                result = subprocess.run(
+                    ['az', 'account', 'show'],
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
                 if result.returncode == 0:
                     account_info = json.loads(result.stdout)
                     self.logger.info(f"Found active Azure account: {account_info.get('user', {}).get('name', 'Unknown')}")
@@ -166,15 +174,13 @@ class AzureProvider(BaseOmniProx):
             self.logger.error(f"Error initializing Azure clients: {e}")
             return False
 
-    def create_nginx_container(self, name: str, target_url: str) -> 'Container':
-        """Create HTTP proxy container with path preservation"""
+    def _get_proxy_script(self, target_url: str) -> str:
+        """Generate the Node.js proxy script content.
 
-        # Use a simple Node.js based proxy that preserves paths
-        # We'll use node:alpine with a custom command
-        # Create a proxy command that forwards requests and preserves paths
-        proxy_command = f"""
-node -e "
-const http = require('http');
+        Separated from container creation to avoid shell escaping issues.
+        The script is passed via environment variable and written to file at runtime.
+        """
+        return f'''const http = require('http');
 const https = require('https');
 const url = require('url');
 
@@ -252,8 +258,23 @@ server.listen(80, () => {{
     console.log('OmniProx proxy running on port 80');
     console.log('Base URL:', BASE_URL);
 }});
-"
-"""
+'''
+
+    def create_nginx_container(self, name: str, target_url: str) -> 'Container':
+        """Create HTTP proxy container with path preservation.
+
+        Uses environment variable to pass the proxy script, avoiding shell
+        escaping issues that occur with inline script execution.
+        """
+        # Get the proxy script content
+        proxy_script = self._get_proxy_script(target_url)
+
+        # Command writes the script from env var to file, then executes it
+        # This avoids complex shell escaping issues with inline scripts
+        command = [
+            'sh', '-c',
+            'echo "$PROXY_SCRIPT" > /tmp/proxy.js && node /tmp/proxy.js'
+        ]
 
         container = Container(
             name=name,
@@ -265,9 +286,10 @@ server.listen(80, () => {{
                 )
             ),
             ports=[ContainerPort(port=80)],
-            command=['sh', '-c', proxy_command.replace('"', '\\"').replace('\n', ' ')],
+            command=command,
             environment_variables=[
-                EnvironmentVariable(name='TARGET_URL', value=target_url)
+                EnvironmentVariable(name='TARGET_URL', value=target_url),
+                EnvironmentVariable(name='PROXY_SCRIPT', value=proxy_script)
             ]
         )
 
@@ -416,9 +438,9 @@ server.listen(80, () => {{
                 print(f"  # Random proxy from pool:")
                 print(f"  curl '{random.choice(self.container_pool)['url']}'")
                 print(f"\n  # Python rotation client:")
-                print(f"  python3 /tmp/omniprox_rotate.py")
+                print(f"  python3 {ROTATE_CLIENT_PATH}")
                 print(f"\n  # Test IP rotation:")
-                print(f"  python3 /tmp/omniprox_rotate.py test")
+                print(f"  python3 {ROTATE_CLIENT_PATH} test")
 
                 return True
             else:
@@ -554,11 +576,10 @@ if __name__ == "__main__":
 '''.format(pool_json=json.dumps(self.container_pool, indent=2))
 
         # Save the client script
-        client_path = Path('/tmp/omniprox_rotate.py')
-        client_path.write_text(client_script)
-        client_path.chmod(0o755)
+        ROTATE_CLIENT_PATH.write_text(client_script)
+        ROTATE_CLIENT_PATH.chmod(0o755)
 
-        print(f"\n[OK] Rotation client created: {client_path}")
+        print(f"\n[OK] Rotation client created: {ROTATE_CLIENT_PATH}")
 
     def list(self):
         """List all containers in the pool"""
@@ -813,11 +834,11 @@ if __name__ == "__main__":
                 print("[TEST] TESTING IP ROTATION")
                 print("="*60)
 
-                import subprocess
                 result = subprocess.run(
-                    ['python3', '/tmp/omniprox_rotate.py', 'test', '10'],
+                    ['python3', str(ROTATE_CLIENT_PATH), 'test', '10'],
                     capture_output=True,
-                    text=True
+                    text=True,
+                    timeout=120
                 )
                 print(result.stdout)
 
@@ -830,11 +851,11 @@ if __name__ == "__main__":
         else:
             # Test existing pool
             print("Testing existing container pool...")
-            import subprocess
             result = subprocess.run(
-                ['python3', '/tmp/omniprox_rotate.py', 'test'],
+                ['python3', str(ROTATE_CLIENT_PATH), 'test'],
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=60
             )
             print(result.stdout)
 

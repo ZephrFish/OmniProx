@@ -53,6 +53,7 @@ gcp = [
     "google-cloud-resource-manager>=1.0.0",
 ]
 azure = [
+    "azure-mgmt-containerinstance>=9.0.0",
     "azure-mgmt-apimanagement>=3.0.0",
     "azure-mgmt-resource>=23.0.0",
     "azure-identity>=1.14.0",
@@ -60,6 +61,7 @@ azure = [
 all = [
     "google-cloud-api-gateway>=1.0.0",
     "google-cloud-resource-manager>=1.0.0",
+    "azure-mgmt-containerinstance>=9.0.0",
     "azure-mgmt-apimanagement>=3.0.0",
     "azure-mgmt-resource>=23.0.0",
     "azure-identity>=1.14.0",

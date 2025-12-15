@@ -7,6 +7,7 @@ import os
 import sys
 import subprocess
 import configparser
+import json
 from pathlib import Path
 from datetime import datetime
 import logging
@@ -138,9 +139,8 @@ class OmniProxSetup:
         if choice == '1':
             try:
                 result = subprocess.run(['az', 'account', 'show'],
-                                      capture_output=True, text=True, check=False)
+                                      capture_output=True, text=True, check=False, timeout=30)
                 if result.returncode == 0:
-                    import json
                     account = json.loads(result.stdout)
                     print(f"[OK] Azure CLI logged in as: {account.get('user', {}).get('name', 'Unknown')}")
                     config[profile_key]['subscription_id'] = account.get('id', '')
@@ -186,7 +186,7 @@ class OmniProxSetup:
         if choice == '1':
             try:
                 result = subprocess.run(['gcloud', 'auth', 'list'],
-                                      capture_output=True, text=True, check=False)
+                                      capture_output=True, text=True, check=False, timeout=30)
                 if result.returncode == 0 and 'ACTIVE' in result.stdout:
                     print(f"[OK] GCloud CLI configured")
                     config[profile_key]['use_cli'] = 'true'
@@ -251,9 +251,8 @@ class OmniProxSetup:
         if choice == '1':
             try:
                 result = subprocess.run(['az', 'account', 'show'],
-                                      capture_output=True, text=True, check=False)
+                                      capture_output=True, text=True, check=False, timeout=30)
                 if result.returncode == 0:
-                    import json
                     account_info = json.loads(result.stdout)
                     config[profile_key]['subscription_id'] = account_info['id']
                     print(f"[OK] Using Azure subscription: {account_info['name']}")
@@ -293,7 +292,7 @@ class OmniProxSetup:
         if choice == '1':
             try:
                 result = subprocess.run(['gcloud', 'auth', 'list'],
-                                      capture_output=True, text=True, check=False)
+                                      capture_output=True, text=True, check=False, timeout=30)
                 if result.returncode == 0 and 'ACTIVE' in result.stdout:
                     print(f"[OK] GCloud CLI configured")
                     config[profile_key]['use_cli'] = 'true'

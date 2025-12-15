@@ -3,7 +3,7 @@
 OmniProx is a multi-cloud HTTP proxy manager that provides IP rotation and header manipulation capabilities across different cloud providers. It offers a unified interface for managing proxies on various cloud platforms.
 
 > [!IMPORTANT]
-> This has been tested from a Linux/MacOS base build therefore most deployment with python may differ on Windows.  
+> This has been tested from a Linux/MacOS base build. **Windows users should use WSL (Windows Subsystem for Linux)** with Ubuntu 22.04 or later for best compatibility. Native Windows installations may encounter encoding issues, particularly with the Azure provider and python lib support.
 
 ## Features
 
@@ -456,6 +456,38 @@ done
 5. **Monitor usage**: Check cloud consoles regularly
 
 ## Troubleshooting
+
+### Windows Installation
+
+OmniProx is primarily developed and tested on Linux/macOS. For Windows users:
+
+**Recommended: Use WSL2 (Windows Subsystem for Linux)**
+
+```powershell
+# Install WSL2 with Ubuntu (run in PowerShell as Administrator)
+wsl --install -d Ubuntu-22.04
+
+# After restart, open Ubuntu and install dependencies
+sudo apt update && sudo apt install -y python3 python3-pip python3-venv
+
+# Clone and install OmniProx
+git clone https://github.com/ZephrFish/OmniProx.git
+cd OmniProx
+python3 -m venv venv
+source venv/bin/activate
+pip install -e .
+```
+
+**Why WSL is recommended:**
+- The Azure provider uses inline Node.js scripts that can have encoding issues on native Windows
+- Shell command execution is more reliable in a POSIX environment
+- Azure CLI integration works more consistently
+
+**If you must use native Windows:**
+- Use Python 3.10+ from python.org (not Windows Store)
+- Install Git Bash and run commands from there
+- Set `PYTHONUTF8=1` environment variable
+- The Cloudflare provider works best on native Windows
 
 ### Common Issues
 
