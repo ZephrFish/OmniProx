@@ -3,8 +3,10 @@ OmniProx CLI - Command-line interface for multi-cloud HTTP proxy manager
 """
 
 import argparse
+import configparser
 import os
 import sys
+import traceback
 from typing import Optional
 
 from omniprox.core.utils import setup_logging, check_provider_availability, print_provider_status
@@ -23,7 +25,7 @@ def select_provider_interactive():
 
     while True:
         try:
-            choice = input("\nSelect option (1-5): ").strip()
+            choice = input("\nSelect option (1-4): ").strip()
 
             if choice == '1':
                 return 'cloudflare'
@@ -62,8 +64,6 @@ def get_provider_class(provider: str):
 
 def execute_all_providers(args):
     """Execute command for all configured providers"""
-    import configparser
-
     # All available providers (simplified list)
     providers = ['cloudflare', 'gcp', 'azure', 'alibaba']
 
@@ -109,7 +109,7 @@ def execute_all_providers(args):
             # Get the provider class
             provider_class = get_provider_class(provider)
             if not provider_class:
-                print(f"  [ERROR] Provider implementation not available")
+                print(f"  Error: Provider implementation not available")
                 failed += 1
                 continue
 
@@ -125,7 +125,7 @@ def execute_all_providers(args):
                 failed += 1
 
         except Exception as e:
-            print(f"  [ERROR] {e}")
+            print(f"  Error: {e}")
             failed += 1
 
     # Summary
@@ -255,12 +255,12 @@ def main():
 
     if args.check_providers:
         print_provider_status()
-        sys.exit(0)
+        return 0
 
     if not args.command:
         print("Error: --command is required")
         print("Try: omniprox --help")
-        sys.exit(1)
+        return 1
 
     if args.debug:
         log_level = 'DEBUG'
@@ -283,7 +283,7 @@ def main():
         if args.provider == 'gcp':
             print("  pip install google-cloud-api-gateway google-cloud-resource-manager")
         elif args.provider == 'azure':
-            print("  pip install azure-mgmt-web azure-mgmt-resource azure-mgmt-storage azure-identity")
+            print("  pip install azure-mgmt-containerinstance azure-mgmt-resource azure-identity")
         elif args.provider in ['cloudflare', 'cf']:
             print("  pip install requests")
 
@@ -313,8 +313,7 @@ def main():
         logger.error(f"Unexpected error: {e}", exc_info=True)
         if not args.quiet:
             print(f"\nError: {e}")
-            if args.log_level == 'DEBUG':
-                import traceback
+            if log_level == 'DEBUG':
                 traceback.print_exc()
         sys.exit(1)
 

@@ -4,12 +4,17 @@ Handles common functionality across all cloud providers
 """
 
 import configparser
+import datetime
 import logging
+import random
+import string
+import time
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Dict, Any, Optional
+from urllib.parse import urlparse
+
 import tldextract
-import datetime
 
 
 class BaseOmniProx(ABC):
@@ -55,11 +60,23 @@ class BaseOmniProx(ABC):
 
     @abstractmethod
     def create_profile(self, config: configparser.ConfigParser, profile_name: str):
-        pass
+        """Create a new provider profile configuration.
+
+        Args:
+            config: ConfigParser instance to store profile data
+            profile_name: Name of the profile section
+        """
+        raise NotImplementedError("Subclass must implement create_profile")
 
     @abstractmethod
     def load_profile(self, config: configparser.ConfigParser, profile_name: str):
-        pass
+        """Load an existing provider profile configuration.
+
+        Args:
+            config: ConfigParser instance containing profile data
+            profile_name: Name of the profile section to load
+        """
+        raise NotImplementedError("Subclass must implement load_profile")
 
     def save_profile(self, config: configparser.ConfigParser):
         self.logger.debug(f"Saving profile to {self.config_path}")
@@ -68,9 +85,13 @@ class BaseOmniProx(ABC):
         self.logger.info(f"Profile saved successfully")
 
     @abstractmethod
-    def init_provider(self):
-        """Initialize provider-specific resources"""
-        pass
+    def init_provider(self) -> bool:
+        """Initialize provider-specific resources.
+
+        Returns:
+            True if initialization succeeded, False otherwise
+        """
+        raise NotImplementedError("Subclass must implement init_provider")
 
     def execute(self):
         """Execute the requested command"""
@@ -101,18 +122,31 @@ class BaseOmniProx(ABC):
             return False
 
     @abstractmethod
-    def create(self):
-        pass
+    def create(self) -> bool:
+        """Create a new proxy.
+
+        Returns:
+            True if creation succeeded, False otherwise
+        """
+        raise NotImplementedError("Subclass must implement create")
 
     @abstractmethod
-    def list(self):
-        """List all proxies"""
-        pass
+    def list(self) -> bool:
+        """List all proxies.
+
+        Returns:
+            True if listing succeeded, False otherwise
+        """
+        raise NotImplementedError("Subclass must implement list")
 
     @abstractmethod
-    def delete(self):
-        """Delete a proxy"""
-        pass
+    def delete(self) -> bool:
+        """Delete a proxy.
+
+        Returns:
+            True if deletion succeeded, False otherwise
+        """
+        raise NotImplementedError("Subclass must implement delete")
 
     def update(self):
         """Update a proxy (optional)"""
@@ -134,10 +168,12 @@ class BaseOmniProx(ABC):
 
     def proxytest(self):
         """Test proxy creation and IP rotation validation"""
-        import time
-        import requests
-        import random
-        import string
+        try:
+            import requests
+        except ImportError:
+            print("Error: 'requests' package required for proxy testing")
+            print("Install with: pip install requests")
+            return False
 
         print(f"\n{'='*60}")
         print(f"Proxy Test for {self.provider.upper()}")
@@ -223,7 +259,7 @@ class BaseOmniProx(ABC):
                     self.cleanup()
             except (EOFError, KeyboardInterrupt):
                 print("\nSkipping cleanup (non-interactive mode)")
-                print("Run 'omniprox --provider {} --command cleanup' to clean up manually".format(self.provider))
+                print(f"Run 'omniprox --provider {self.provider} --command cleanup' to clean up manually")
 
             # Restore original URL
             self.url = original_url
@@ -246,7 +282,6 @@ class BaseOmniProx(ABC):
             return False
 
         try:
-            from urllib.parse import urlparse
             result = urlparse(url)
             is_valid = all([result.scheme, result.netloc])
             if not is_valid:
@@ -300,5 +335,9 @@ class BaseOmniProx(ABC):
 
     @abstractmethod
     def cleanup(self):
-        """Delete all proxies"""
-        pass
+        """Delete all proxies.
+
+        Returns:
+            True if cleanup succeeded, False otherwise
+        """
+        raise NotImplementedError("Subclass must implement cleanup")
