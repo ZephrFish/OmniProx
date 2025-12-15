@@ -4,6 +4,8 @@ Utility functions for OmniProx
 
 import logging
 import logging.handlers
+import random
+import string
 import sys
 from pathlib import Path
 from typing import Optional
@@ -211,6 +213,29 @@ def get_unique_suffix(length: int = 6) -> str:
     Returns:
         str: Random lowercase alphanumeric string
     """
-    import random
-    import string
     return ''.join(random.choices(string.ascii_lowercase + string.digits, k=length))
+
+
+def confirm_action(prompt: str, auto_confirm_non_interactive: bool = True) -> bool:
+    """Prompt for user confirmation with non-interactive mode support
+
+    Args:
+        prompt: The confirmation prompt to display
+        auto_confirm_non_interactive: If True, auto-confirm in non-interactive mode
+
+    Returns:
+        bool: True if user confirmed, False otherwise
+    """
+    try:
+        if not sys.stdin.isatty():
+            if auto_confirm_non_interactive:
+                return True
+            # Non-interactive mode, check for piped input
+            confirm = sys.stdin.readline().strip().lower()
+            return confirm == 'yes'
+
+        confirm = input(f"{prompt} (yes/no): ").strip().lower()
+        return confirm == 'yes'
+    except (EOFError, KeyboardInterrupt):
+        print("\nOperation cancelled")
+        return False

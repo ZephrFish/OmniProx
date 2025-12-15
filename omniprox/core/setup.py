@@ -17,6 +17,38 @@ import getpass
 class OmniProxSetup:
     """First-time setup wizard for OmniProx"""
 
+    def _check_azure_cli(self) -> dict:
+        """Check Azure CLI authentication and return account info.
+
+        Returns:
+            dict with 'success', 'account' (if success), and 'error' (if failed)
+        """
+        try:
+            result = subprocess.run(['az', 'account', 'show'],
+                                  capture_output=True, text=True, check=False, timeout=30)
+            if result.returncode == 0:
+                account = json.loads(result.stdout)
+                return {'success': True, 'account': account}
+            else:
+                return {'success': False, 'error': "Azure CLI not logged in. Run 'az login' first."}
+        except FileNotFoundError:
+            return {'success': False, 'error': "Azure CLI not installed. Please install it first."}
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': "Azure CLI check timed out."}
+
+    def _get_azure_service_principal(self) -> dict:
+        """Collect Azure service principal credentials from user.
+
+        Returns:
+            dict with subscription_id, tenant_id, client_id, client_secret
+        """
+        return {
+            'subscription_id': input("Azure Subscription ID: ").strip(),
+            'tenant_id': input("Tenant ID: ").strip(),
+            'client_id': input("Client ID (App ID): ").strip(),
+            'client_secret': getpass.getpass("Client Secret: ").strip()
+        }
+
     def __init__(self):
         """Initialize setup wizard"""
         self.config_dir = Path.home() / '.omniprox'
@@ -137,28 +169,21 @@ class OmniProxSetup:
             config[profile_key] = {}
 
         if choice == '1':
-            try:
-                result = subprocess.run(['az', 'account', 'show'],
-                                      capture_output=True, text=True, check=False, timeout=30)
-                if result.returncode == 0:
-                    account = json.loads(result.stdout)
-                    print(f"[OK] Azure CLI logged in as: {account.get('user', {}).get('name', 'Unknown')}")
-                    config[profile_key]['subscription_id'] = account.get('id', '')
-                    config[profile_key]['tenant_id'] = account.get('tenantId', '')
-                    config[profile_key]['use_cli'] = 'true'
-                    print(f"[OK] Tenant ID: {account.get('tenantId', 'Unknown')}")
-                else:
-                    print("Azure CLI not logged in. Run 'az login' first.")
-                    return
-            except FileNotFoundError:
-                print("Azure CLI not installed. Please install it first.")
+            cli_result = self._check_azure_cli()
+            if cli_result['success']:
+                account = cli_result['account']
+                print(f"[OK] Azure CLI logged in as: {account.get('user', {}).get('name', 'Unknown')}")
+                config[profile_key]['subscription_id'] = account.get('id', '')
+                config[profile_key]['tenant_id'] = account.get('tenantId', '')
+                config[profile_key]['use_cli'] = 'true'
+                print(f"[OK] Tenant ID: {account.get('tenantId', 'Unknown')}")
+            else:
+                print(cli_result['error'])
                 return
 
         elif choice == '2':
-            config[profile_key]['subscription_id'] = input("Azure Subscription ID: ").strip()
-            config[profile_key]['tenant_id'] = input("Tenant ID: ").strip()
-            config[profile_key]['client_id'] = input("Client ID (App ID): ").strip()
-            config[profile_key]['client_secret'] = getpass.getpass("Client Secret: ").strip()
+            creds = self._get_azure_service_principal()
+            config[profile_key].update(creds)
 
         elif choice == '3':
             print("[OK] Will use Azure CLI credentials when available")
@@ -249,25 +274,18 @@ class OmniProxSetup:
         config[profile_key]['use_cli'] = 'true' if choice == '1' else 'false'
 
         if choice == '1':
-            try:
-                result = subprocess.run(['az', 'account', 'show'],
-                                      capture_output=True, text=True, check=False, timeout=30)
-                if result.returncode == 0:
-                    account_info = json.loads(result.stdout)
-                    config[profile_key]['subscription_id'] = account_info['id']
-                    print(f"[OK] Using Azure subscription: {account_info['name']}")
-                else:
-                    print("Azure CLI not authenticated. Run 'az login' first.")
-                    return
-            except FileNotFoundError:
-                print("Azure CLI not installed. Please install it first.")
+            cli_result = self._check_azure_cli()
+            if cli_result['success']:
+                account = cli_result['account']
+                config[profile_key]['subscription_id'] = account['id']
+                print(f"[OK] Using Azure subscription: {account['name']}")
+            else:
+                print(cli_result['error'])
                 return
 
         elif choice == '2':
-            config[profile_key]['subscription_id'] = input("Azure Subscription ID: ").strip()
-            config[profile_key]['tenant_id'] = input("Tenant ID: ").strip()
-            config[profile_key]['client_id'] = input("Client ID (App ID): ").strip()
-            config[profile_key]['client_secret'] = getpass.getpass("Client Secret: ").strip()
+            creds = self._get_azure_service_principal()
+            config[profile_key].update(creds)
 
         config[profile_key]['resource_group'] = input("Resource Group Name (default: omniprox-frontdoor): ").strip() or 'omniprox-frontdoor'
         print(f"[OK] Azure Front Door profile '{profile_name}' configured")
