@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "omniprox"
-version = "2.0.0"
+version = "2.0.1"
 description = "Multi-cloud HTTP proxy manager supporting GCP, Azure, and Cloudflare"
 readme = "README.md"
 requires-python = ">=3.8"
@@ -53,6 +53,7 @@ gcp = [
     "google-cloud-resource-manager>=1.0.0",
 ]
 azure = [
+    "azure-mgmt-containerinstance>=9.0.0",
     "azure-mgmt-apimanagement>=3.0.0",
     "azure-mgmt-resource>=23.0.0",
     "azure-identity>=1.14.0",
@@ -60,6 +61,7 @@ azure = [
 all = [
     "google-cloud-api-gateway>=1.0.0",
     "google-cloud-resource-manager>=1.0.0",
+    "azure-mgmt-containerinstance>=9.0.0",
     "azure-mgmt-apimanagement>=3.0.0",
     "azure-mgmt-resource>=23.0.0",
     "azure-identity>=1.14.0",

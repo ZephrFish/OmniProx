@@ -4,16 +4,21 @@ Alibaba Cloud API Gateway provider for OmniProx
 Provides API proxy capabilities through Alibaba Cloud
 """
 
-import os
-import sys
+import configparser
+import getpass
 import json
-import time
+import logging
+import os
 import random
 import string
-import logging
-import configparser
+import sys
+import time
+import traceback
 from typing import Dict, List, Optional, Any
+from urllib.parse import urlparse
+
 from omniprox.core.base import BaseOmniProx
+from omniprox.core.utils import confirm_action
 
 class AlibabaProvider(BaseOmniProx):
     """Alibaba Cloud API Gateway provider"""
@@ -34,7 +39,7 @@ class AlibabaProvider(BaseOmniProx):
         print("-" * 40)
 
         config[profile_name]['access_key_id'] = input("Access Key ID: ").strip()
-        config[profile_name]['access_key_secret'] = input("Access Key Secret: ").strip()
+        config[profile_name]['access_key_secret'] = getpass.getpass("Access Key Secret: ").strip()
         config[profile_name]['region_id'] = input("Region ID [cn-hangzhou]: ").strip() or 'cn-hangzhou'
 
         self.save_profile(config)
@@ -51,8 +56,8 @@ class AlibabaProvider(BaseOmniProx):
                 self.region_id = self.args.region
             else:
                 self.region_id = profile.get('region_id', 'cn-hangzhou')
-            self.logger.info(f"Loaded profile '{profile_name}'")
-            self.logger.debug(f"Credentials loaded - Access Key ID: {self.access_key_id}, Region: {self.region_id}")
+            self.logger.info(f"Loaded Alibaba profile '{profile_name}'")
+            self.logger.debug(f"Alibaba credentials loaded for region: {self.region_id}")
 
     def init_provider(self) -> bool:
         """Initialize Alibaba Cloud SDK"""
@@ -60,7 +65,7 @@ class AlibabaProvider(BaseOmniProx):
             from alibabacloud_cloudapi20160714.client import Client
             from alibabacloud_tea_openapi import models as open_api_models
 
-            self.logger.debug(f"Initializing with Access Key ID: {self.access_key_id}")
+            self.logger.debug("Initializing Alibaba Cloud API client")
             config = open_api_models.Config(
                 access_key_id=self.access_key_id,
                 access_key_secret=self.access_key_secret,
@@ -73,7 +78,7 @@ class AlibabaProvider(BaseOmniProx):
             return True
 
         except ImportError:
-            print("[ERROR] Alibaba Cloud SDK not installed.")
+            print("Error: Alibaba Cloud SDK not installed.")
             print("Run: pip install alibabacloud-cloudapi20160714 alibabacloud-tea-openapi")
             return False
         except Exception as e:
@@ -91,7 +96,6 @@ class AlibabaProvider(BaseOmniProx):
         try:
             from alibabacloud_cloudapi20160714 import models as cloudapi_models
             from alibabacloud_tea_util import models as util_models
-            from urllib.parse import urlparse
 
             parsed_url = urlparse(self.url)
             backend_host = parsed_url.netloc
@@ -216,12 +220,12 @@ class AlibabaProvider(BaseOmniProx):
 
         except Exception as e:
             self.logger.error(f"Failed to create API Gateway: {e}")
-            print(f"[ERROR] Failed to create API Gateway: {e}")
+            print(f"Error: Failed to create API Gateway: {e}")
             return False
 
     def list(self) -> bool:
         """List all Alibaba API Gateways"""
-        self.logger.debug(f"list() - Access Key ID before init: {self.access_key_id}")
+        self.logger.debug("Listing Alibaba API Gateways")
         if not self.init_provider():
             return False
 
@@ -274,8 +278,8 @@ class AlibabaProvider(BaseOmniProx):
                                     print(f"    Stage: {api.stage_name if hasattr(api, 'stage_name') else 'N/A'}")
                                     print(f"    Visibility: {api.visibility}")
 
-                        except:
-                            pass
+                        except Exception as e:
+                            self.logger.debug(f"Could not list APIs in group: {e}")
 
             if count == 0:
                 print("\nNo OmniProx API Gateways found")
@@ -285,10 +289,9 @@ class AlibabaProvider(BaseOmniProx):
             return True
 
         except Exception as e:
-            import traceback
             self.logger.error(f"Failed to list API Gateways: {e}")
             self.logger.debug(f"Stack trace: {traceback.format_exc()}")
-            print(f"[ERROR] Failed to list: {e}")
+            print(f"Error: Failed to list: {e}")
             return False
 
     def _delete_api_only(self, api_id: str, group_id: str) -> bool:
@@ -314,8 +317,9 @@ class AlibabaProvider(BaseOmniProx):
                         abolish_request,
                         runtime
                     )
-            except:
-                pass  # API might not be deployed to all stages
+            except Exception as e:
+                # API might not be deployed to all stages
+                self.logger.debug(f"Could not undeploy from all stages: {e}")
 
             # 2. Delete API
             delete_api_request = cloudapi_models.DeleteApiRequest(
@@ -334,9 +338,15 @@ class AlibabaProvider(BaseOmniProx):
             self.logger.error(f"Failed to delete API: {e}")
             return False
 
-    def delete(self, api_id: str, group_id: Optional[str] = None) -> bool:
+    def delete(self) -> bool:
         """Delete a specific API Gateway"""
         if not self.init_provider():
+            return False
+
+        # Use the CLI-provided api_id
+        api_id = self.api_id
+        if not api_id:
+            print("Error: --api_id is required for delete command")
             return False
 
         try:
@@ -344,18 +354,17 @@ class AlibabaProvider(BaseOmniProx):
             from alibabacloud_tea_util import models as util_models
 
             runtime = util_models.RuntimeOptions()
+            group_id = None
 
-            # If group_id not provided, try to find it
-            if not group_id:
-                # Get API details to find group
-                describe_api_request = cloudapi_models.DescribeApiRequest(
-                    api_id=api_id
-                )
-                api_response = self.api_client.describe_api_with_options(
-                    describe_api_request,
-                    runtime
-                )
-                group_id = api_response.body.group_id
+            # Get API details to find group
+            describe_api_request = cloudapi_models.DescribeApiRequest(
+                api_id=api_id
+            )
+            api_response = self.api_client.describe_api_with_options(
+                describe_api_request,
+                runtime
+            )
+            group_id = api_response.body.group_id
 
             print(f"Deleting API {api_id}...")
 
@@ -371,8 +380,9 @@ class AlibabaProvider(BaseOmniProx):
                         abolish_request,
                         runtime
                     )
-            except:
-                pass
+            except Exception as e:
+                # API might not be deployed to all stages
+                self.logger.debug(f"Could not undeploy from all stages: {e}")
 
             # 2. Delete API
             delete_api_request = cloudapi_models.DeleteApiRequest(
@@ -397,14 +407,15 @@ class AlibabaProvider(BaseOmniProx):
                     runtime
                 )
                 print(f"  [OK] Deleted API Group: {group_id}")
-            except:
+            except Exception as e:
+                self.logger.debug(f"Could not delete group {group_id}: {e}")
                 print(f"  [INFO] API Group {group_id} still has other APIs")
 
             return True
 
         except Exception as e:
             self.logger.error(f"Failed to delete API Gateway: {e}")
-            print(f"[ERROR] Failed to delete: {e}")
+            print(f"Error: Failed to delete: {e}")
             return False
 
     def cleanup(self) -> bool:
@@ -432,12 +443,13 @@ class AlibabaProvider(BaseOmniProx):
             )
 
             omniprox_groups = []
-            for group in groups_response.body.api_group_attributes.api_group_attribute:
-                if 'omniprox' in group.group_name.lower():
-                    omniprox_groups.append({
-                        'group_id': group.group_id,
-                        'group_name': group.group_name
-                    })
+            if groups_response.body.api_group_attributes and groups_response.body.api_group_attributes.api_group_attribute:
+                for group in groups_response.body.api_group_attributes.api_group_attribute:
+                    if 'omniprox' in group.group_name.lower():
+                        omniprox_groups.append({
+                            'group_id': group.group_id,
+                            'group_name': group.group_name
+                        })
 
             if not omniprox_groups:
                 print("No OmniProx API Gateways to clean up")
@@ -445,14 +457,7 @@ class AlibabaProvider(BaseOmniProx):
 
             print(f"Found {len(omniprox_groups)} OmniProx API Group(s)")
 
-            # Check if running in non-interactive mode
-            import sys
-            if not sys.stdin.isatty():
-                confirm = "yes"  # Auto-confirm in non-interactive mode
-            else:
-                confirm = input("Delete all OmniProx API Gateways? (yes/no): ").strip().lower()
-
-            if confirm != 'yes':
+            if not confirm_action("Delete all OmniProx API Gateways?"):
                 print("Cleanup cancelled")
                 return False
 
@@ -499,5 +504,112 @@ class AlibabaProvider(BaseOmniProx):
 
         except Exception as e:
             self.logger.error(f"Cleanup failed: {e}")
-            print(f"[ERROR] Cleanup failed: {e}")
+            print(f"Error: Cleanup failed: {e}")
             return False
+
+    def status(self) -> bool:
+        """Check Alibaba Cloud API Gateway status"""
+        if not self.init_provider():
+            return False
+
+        print(f"\nAlibaba Cloud API Gateway Status")
+        print("=" * 60)
+        print(f"Region: {self.region_id}")
+        print(f"Access Key ID: {self.access_key_id[:8]}..." if self.access_key_id else "Access Key ID: Not configured")
+
+        # List API groups to show count
+        try:
+            from alibabacloud_cloudapi20160714 import models as cloudapi_models
+            from alibabacloud_tea_util import models as util_models
+
+            list_groups_request = cloudapi_models.DescribeApiGroupsRequest(
+                page_size=50,
+                page_number=1
+            )
+
+            runtime = util_models.RuntimeOptions()
+            groups_response = self.api_client.describe_api_groups_with_options(
+                list_groups_request,
+                runtime
+            )
+
+            total_groups = 0
+            omniprox_groups = 0
+            if groups_response.body.api_group_attributes and groups_response.body.api_group_attributes.api_group_attribute:
+                for group in groups_response.body.api_group_attributes.api_group_attribute:
+                    total_groups += 1
+                    if 'omniprox' in group.group_name.lower():
+                        omniprox_groups += 1
+
+            print(f"\nAPI Group Statistics:")
+            print(f"  Total API Groups: {total_groups}")
+            print(f"  OmniProx Groups: {omniprox_groups}")
+
+            print(f"\nPricing Information:")
+            print(f"  Free Tier: 1 million calls/month")
+            print(f"  Standard: Pay-as-you-go based on usage")
+
+            print(f"\nUseful Links:")
+            print(f"  Console: https://apigateway.console.aliyun.com/")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to get status: {e}")
+            print(f"Error: Failed to get status: {e}")
+            return False
+
+    def usage(self) -> bool:
+        """Check Alibaba Cloud API Gateway usage statistics"""
+        print(f"\nAlibaba Cloud API Gateway Usage")
+        print("=" * 60)
+        print("Detailed usage statistics require the Alibaba Cloud console.")
+        print(f"\nFor detailed usage, visit:")
+        print(f"  https://apigateway.console.aliyun.com/")
+        print(f"\nRegion: {self.region_id}")
+
+        return True
+
+    def proxytest(self) -> bool:
+        """Test proxy creation for Alibaba Cloud"""
+        print(f"\n{'='*60}")
+        print(f"Proxy Test for ALIBABA")
+        print(f"{'='*60}")
+
+        # Save original URL
+        original_url = self.url
+        self.url = "https://httpbin.org"
+
+        print(f"\nStep 1: Creating test proxy for {self.url}...")
+
+        try:
+            if self.create():
+                print(f"\n[OK] Test proxy created successfully")
+
+                # Offer cleanup
+                try:
+                    cleanup_choice = input(f"\nCleanup test proxy? (y/n): ").strip().lower()
+                    if cleanup_choice == 'y':
+                        print("Cleaning up test proxy...")
+                        self.cleanup()
+                except (EOFError, KeyboardInterrupt):
+                    print("\nSkipping cleanup (non-interactive mode)")
+                    print(f"Run 'omniprox --provider alibaba --command cleanup' to clean up manually")
+
+                self.url = original_url
+                return True
+            else:
+                print(f"\n[FAILED] Could not create test proxy")
+                self.url = original_url
+                return False
+
+        except Exception as e:
+            print(f"\nError: Test failed: {e}")
+            self.url = original_url
+            return False
+
+    def _get_last_created_proxy_url(self) -> Optional[str]:
+        """Get the URL of the last created proxy for testing"""
+        if hasattr(self, 'apis') and self.apis:
+            return self.apis[-1].get('proxy_url')
+        return None
