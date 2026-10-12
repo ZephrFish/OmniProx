@@ -28,7 +28,7 @@ def _get_rotate_client_path() -> Path:
 # Azure SDK imports
 try:
     from azure.identity import AzureCliCredential, ClientSecretCredential
-    from azure.mgmt.resource import ResourceManagementClient
+    from azure.mgmt.resource.resources import ResourceManagementClient
     from azure.mgmt.containerinstance import ContainerInstanceManagementClient
     from azure.mgmt.containerinstance.models import (
         ContainerGroup,
