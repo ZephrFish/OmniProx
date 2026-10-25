@@ -163,7 +163,8 @@ Providers:
 
     parser.add_argument('--provider', '-p',
                        choices=['gcp', 'azure', 'az', 'cloudflare', 'cf', 'alibaba'],
-                       help='Cloud provider')
+                       default='cloudflare',
+                       help='Cloud provider (default: cloudflare)')
 
     parser.add_argument('--command', '-c',
                        choices=['create', 'list', 'delete', 'update', 'status', 'usage', 'cleanup', 'proxytest'],
@@ -326,14 +327,14 @@ def quick_cli():
         print("""OmniProx - Quick multi-cloud proxy manager
 
 Usage:
-  omni create <url>           Create proxy (will prompt for provider)
+  omni create <url>           Create proxy (default provider: cloudflare)
   omni list                   List all proxies
   omni delete <id>            Delete specific proxy
   omni cleanup                Delete all proxies
   omni proxytest              Test IP rotation for provider
 
 Options:
-  --provider <name>           Use specific provider:
+  --provider <name>           Use specific provider (default: cloudflare):
                                cf/cloudflare, gcp, azure/az, alibaba
   --profile <name>            Use specific profile (default: "default")
   --debug                     Show verbose output

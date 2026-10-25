@@ -150,3 +150,6 @@ demo_commands.py
 *_SUMMARY.md
 *_FIXES.md
 cleanup_recommendations.md
+
+# cf CLI local state
+.cloudflare/
