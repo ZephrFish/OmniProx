@@ -5,6 +5,7 @@ Handles initial configuration and project creation for all cloud providers
 
 import os
 import sys
+import shutil
 import subprocess
 import configparser
 import json
@@ -35,6 +36,29 @@ class OmniProxSetup:
             return {'success': False, 'error': "Azure CLI not installed. Please install it first."}
         except subprocess.TimeoutExpired:
             return {'success': False, 'error': "Azure CLI check timed out."}
+
+    def _check_cf_cli(self) -> dict:
+        """Check the cf CLI login and return the accounts it can reach.
+
+        Returns:
+            dict with 'success', 'accounts' (if success), and 'error' (if failed)
+        """
+        cf_binary = shutil.which('cf') or shutil.which('cloudflare')
+        if not cf_binary:
+            return {'success': False,
+                    'error': "cf CLI not installed. Install it with 'npm install -g cf'."}
+        try:
+            result = subprocess.run([cf_binary, 'auth', 'whoami'],
+                                    capture_output=True, text=True, check=False, timeout=60)
+            info = json.loads(result.stdout)
+            if info.get('authenticated'):
+                return {'success': True, 'accounts': info.get('accounts', []),
+                        'email': info.get('email', '')}
+            return {'success': False, 'error': "cf CLI not logged in. Run 'cf auth login' first."}
+        except (json.JSONDecodeError, ValueError):
+            return {'success': False, 'error': "cf CLI not logged in. Run 'cf auth login' first."}
+        except subprocess.TimeoutExpired:
+            return {'success': False, 'error': "cf CLI check timed out."}
 
     def _get_azure_service_principal(self) -> dict:
         """Collect Azure service principal credentials from user.
@@ -235,12 +259,15 @@ class OmniProxSetup:
     def _setup_cloudflare(self, config):
         """Setup Cloudflare provider configuration"""
         print("\nCloudflare Workers Setup:")
-        print("\nTo get your Cloudflare credentials:")
-        print("1. Sign up at https://cloudflare.com")
-        print("2. Go to https://dash.cloudflare.com/profile/api-tokens")
-        print("3. Create Custom Token with 'Account:Cloudflare Workers Scripts:Edit' permission")
-        print("4. Copy the token and your Account ID from the dashboard")
-        print()
+        print("\nSetup Options:")
+        print("  1. Use the cf CLI login (recommended)")
+        print("  2. Enter an API token manually")
+        print("  3. Skip for now")
+
+        choice = input("\nSelect option (1-3): ").strip()
+        if choice == '3':
+            print("[OK] Cloudflare setup skipped")
+            return
 
         profile_name = input("Profile name (default: 'default'): ").strip() or 'default'
         profile_key = f"cloudflare:{profile_name}"
@@ -248,10 +275,43 @@ class OmniProxSetup:
         if profile_key not in config:
             config[profile_key] = {}
 
-        config[profile_key]['api_token'] = getpass.getpass("Cloudflare API Token: ").strip()
-        config[profile_key]['account_id'] = input("Cloudflare Account ID: ").strip()
-        config[profile_key]['zone_id'] = input("Cloudflare Zone ID (optional): ").strip() or ''
+        if choice == '1':
+            cli_result = self._check_cf_cli()
+            if not cli_result['success']:
+                print(cli_result['error'])
+                print("Install and log in with:  npm install -g cf && cf auth login")
+                return
 
+            accounts = cli_result['accounts']
+            if not accounts:
+                print("cf CLI login has no accounts available.")
+                return
+
+            account_id = accounts[0]['id']
+            if len(accounts) > 1:
+                print("\nAccounts available:")
+                for i, account in enumerate(accounts, 1):
+                    print(f"  {i}. {account.get('name', 'Unknown')} ({account['id']})")
+                selection = input(f"Select account (1-{len(accounts)}, default 1): ").strip()
+                if selection.isdigit() and 1 <= int(selection) <= len(accounts):
+                    account_id = accounts[int(selection) - 1]['id']
+
+            print(f"[OK] cf CLI logged in as: {cli_result['email'] or 'unknown'}")
+            config[profile_key]['api_token'] = ''
+            config[profile_key]['account_id'] = account_id
+            config[profile_key]['cf_profile'] = 'default'
+            print("[OK] No API token stored, the cf CLI login is read at runtime")
+        else:
+            print("\nTo get your Cloudflare credentials:")
+            print("1. Sign up at https://cloudflare.com")
+            print("2. Go to https://dash.cloudflare.com/profile/api-tokens")
+            print("3. Create Custom Token with 'Account:Cloudflare Workers Scripts:Edit' permission")
+            print("4. Copy the token and your Account ID from the dashboard")
+            print()
+            config[profile_key]['api_token'] = getpass.getpass("Cloudflare API Token: ").strip()
+            config[profile_key]['account_id'] = input("Cloudflare Account ID: ").strip()
+
+        config[profile_key]['zone_id'] = input("Cloudflare Zone ID (optional): ").strip() or ''
         print(f"[OK] Cloudflare profile '{profile_name}' configured")
 
     def _setup_azure_frontdoor(self, config):

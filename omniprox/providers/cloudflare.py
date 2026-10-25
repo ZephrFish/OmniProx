@@ -13,6 +13,8 @@ import sys
 import time
 import random
 import string
+import shutil
+import subprocess
 from typing import Optional, Dict, Any, List
 from pathlib import Path
 
@@ -54,7 +56,25 @@ class CloudflareProvider(BaseOmniProx):
         """Create a new Cloudflare profile"""
         print("\nCloudflare Configuration")
         print("="*60)
-        print("Steps to get your Cloudflare credentials:")
+
+        # Prefer an existing cf CLI login over storing a token of our own
+        token, account_id = self._cf_cli_credentials()
+        if token:
+            print("Found a cf CLI login, using it instead of a stored API token.")
+            print(f"Account ID: {account_id}")
+            config[profile_name] = {
+                'api_token': '',
+                'account_id': account_id or '',
+                'zone_id': '',
+                'cf_profile': os.getenv('OMNIPROX_CF_PROFILE', 'default'),
+            }
+            self.save_profile(config)
+            self.load_profile(config, profile_name)
+            return
+
+        print("No cf CLI login found. Either run:")
+        print("  npm install -g cf && cf auth login")
+        print("or create an API token by hand:")
         print("1. Sign up at https://cloudflare.com")
         print("2. Go to https://dash.cloudflare.com/profile/api-tokens")
         print("3. Create Custom Token with 'Account:Cloudflare Workers Scripts:Edit' permission")
@@ -71,14 +91,82 @@ class CloudflareProvider(BaseOmniProx):
         self.load_profile(config, profile_name)
 
     def load_profile(self, config: configparser.ConfigParser, profile_name: str):
-        """Load Cloudflare profile from configuration"""
+        """Load Cloudflare credentials from the environment, the profile, or the cf CLI"""
+        cf_profile = ''
         if profile_name in config:
             self.api_token = config[profile_name].get('api_token', '')
             self.account_id = config[profile_name].get('account_id', '')
             self.zone_id = config[profile_name].get('zone_id', '')
+            cf_profile = config[profile_name].get('cf_profile', '')
+
+        # Environment wins, so nothing has to be written to disk at all
+        self.api_token = os.getenv('CLOUDFLARE_API_TOKEN') or os.getenv('CF_API_TOKEN') or self.api_token
+        self.account_id = os.getenv('CLOUDFLARE_ACCOUNT_ID') or self.account_id
+        self.zone_id = os.getenv('CLOUDFLARE_ZONE_ID') or self.zone_id
+
+        # Otherwise borrow the login from the cf CLI (https://github.com/cloudflare/cf)
+        if self._is_placeholder(self.api_token):
+            token, account_id = self._cf_cli_credentials(cf_profile)
+            if token:
+                self.api_token = token
+                if self._is_placeholder(self.account_id):
+                    self.account_id = account_id
+                self.logger.info("Using credentials from the cf CLI login")
 
         # Ensure endpoints directory exists
         self.endpoints_file.parent.mkdir(parents=True, exist_ok=True)
+
+    @staticmethod
+    def _is_placeholder(value: Optional[str]) -> bool:
+        """True when a credential is missing or still the setup template's stand-in"""
+        return not value or value.startswith('your_')
+
+    def _cf_cli_credentials(self, cf_profile: str = ''):
+        """Read the token and account ID from an existing cf CLI login.
+
+        The cf CLI stores an OAuth token per auth profile and refreshes it on use,
+        so nothing is copied into OmniProx's own configuration.
+
+        Args:
+            cf_profile: cf auth profile name; defaults to $OMNIPROX_CF_PROFILE or 'default'
+
+        Returns:
+            (token, account_id), either of which may be None
+        """
+        cf_binary = shutil.which('cf') or shutil.which('cloudflare')
+        if not cf_binary:
+            self.logger.debug("cf CLI not found on PATH")
+            return None, None
+
+        profile = cf_profile or os.getenv('OMNIPROX_CF_PROFILE', 'default')
+        config_home = os.getenv('XDG_CONFIG_HOME') or str(Path.home() / '.config')
+        cf_config = Path(config_home) / 'cloudflare' / 'config' / f'{profile}.json'
+        if not cf_config.exists():
+            self.logger.debug(f"No cf CLI login at {cf_config} - run 'cf auth login'")
+            return None, None
+
+        account_id = None
+        try:
+            # whoami also makes the CLI refresh the stored token when it has expired
+            result = subprocess.run([cf_binary, 'auth', 'whoami', '--profile', profile],
+                                    capture_output=True, text=True, timeout=60)
+            accounts = json.loads(result.stdout).get('accounts', [])
+            if accounts:
+                account_id = accounts[0].get('id')
+                if len(accounts) > 1:
+                    self.logger.warning(
+                        f"cf login has {len(accounts)} accounts; using the first. "
+                        "Set CLOUDFLARE_ACCOUNT_ID to choose another.")
+        except (OSError, subprocess.SubprocessError, ValueError) as e:
+            self.logger.debug(f"cf auth whoami failed: {e}")
+
+        try:
+            token = json.loads(cf_config.read_text()).get('oauth_token')
+        except (OSError, ValueError) as e:
+            self.logger.debug(f"Could not read {cf_config}: {e}")
+            return None, account_id
+
+        return token, account_id
 
     @property
     def headers(self) -> Dict[str, str]:
@@ -560,7 +648,7 @@ function generateIP() {
                 print("2. Use custom domain (Workers Paid Plan)")
                 print("3. Use other providers for sensitive operations")
                 print("4. Set environment variable: export OMNIPROX_HIDE_SUBDOMAIN=true")
-                print("\nSee docs/CLOUDFLARE_LIMITATIONS.md for details")
+                print("\nSee docs/PROVIDERS.md for details")
                 print("="*60)
 
             # Create multiple workers if requested
